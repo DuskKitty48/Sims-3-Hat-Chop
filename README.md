@@ -4,7 +4,6 @@ An ASI plugin that gives The Sims 3 automatic hat chops, like The Sims 4. When a
 
 It works with any hairstyle and any accessory hat on the hat bone. No hair or hat package is edited, and there are no per-hair chop meshes.
 
-Version 7.2.
 
 ## Chop types
 
