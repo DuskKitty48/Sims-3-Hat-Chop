@@ -29,10 +29,6 @@ Circlets, tiaras, animal ears, earmuffs and headbands therefore leave the hair a
 
 Adults, teens, elders, children and toddlers. Children and toddlers are found by the height of the face mesh. All measurements are then scaled with EA's own head proportions for that age.
 
-## Speed
-
-Head and hat triangles are sorted into height and direction buckets, so each lookup only tests nearby triangles. A finished chop is reused when the game rebuilds the same Sim with the same hair, hat and head. A typical chop takes 15–50 ms, once per outfit change.
-
 ## Requirements
 
 - The Sims 3, EA App version: `TS3.exe` 1.69, PE timestamp `6707155C`. On any other executable the plugin logs `OFF` and does nothing.
