@@ -55,6 +55,28 @@ typedef struct {
     HCRayIndex2 ix2;                   /* v7: height x direction buckets around the head axis */
     double edgeTests;                  /* v7 cost counter (diagnostics only) */
 } HCSkinHead;
+/* v7.3 update: the hat's lower edge per 10-degree slice (0 = front, +z, about x = 0, z = z).
+ * Hair above that edge (plus a margin) sits under the hat, so the hat hides any
+ * contact with the forehead or scalp there: those points are not checked.
+ * NULL = check everything (the approved v6/v7 guard, unchanged). */
+#define HC_SKIN_COVER_SECTORS 36
+#define HC_SKIN_COVER_MARGIN .002
+typedef struct { double y[HC_SKIN_COVER_SECTORS]; double z; } HCSkinCover;
+static int hc_skin_cover_sector(const HCSkinCover *c,const double p[3])
+{
+    double az=atan2(p[0],p[2]-c->z)*(180.0/3.14159265358979323846);int s;
+    az=fmod(az+360.0,360.0);s=(int)(az/10.0);
+    if(s<0)s=0;
+    if(s>=HC_SKIN_COVER_SECTORS)s=HC_SKIN_COVER_SECTORS-1;
+    return s;
+}
+static int hc_skin_covered(const HCSkinCover *c,const double p[3])
+{
+    double y;
+    if(!c)return 0;
+    y=c->y[hc_skin_cover_sector(c,p)];
+    return y<1.0e99 && p[1]>y+HC_SKIN_COVER_MARGIN;
+}
 typedef struct { uint32_t vertex,bits[3]; } HCSkinSeam;
 typedef struct { uint32_t face; double baseline[4],target[4]; unsigned char front[4],active[4]; } HCSkinFace;
 
@@ -262,7 +284,7 @@ static int hc_skin_edge_knots(const HCSkinHead *head,const HCShapeState *state,
 static int hc_skin_edge_constraints(const HCSkinHead *head,const HCShapeState *state,
         const float *Q,const float *approved,const float *baseline,const HCSkinFace *faces,int nface,
         const uint32_t *F,const unsigned char *eligible,const double *direction,double *move,
-        HCSkinGuardStats *stats,int *violations,double *maximum)
+        HCSkinGuardStats *stats,int *violations,double *maximum,const HCSkinCover *cover)
 {
     int i,j,k;
     *violations=0;*maximum=0;
@@ -282,7 +304,7 @@ static int hc_skin_edge_constraints(const HCSkinHead *head,const HCShapeState *s
                     frozen[k]=(1-t)*approved[(size_t)va*3+k]+t*approved[(size_t)vb*3+k];
                     base[k]=(1-t)*baseline[(size_t)va*3+k]+t*baseline[(size_t)vb*3+k];
                 }
-                if(!hc_skin_front(state,frozen))continue;
+                if(!hc_skin_front(state,frozen) || hc_skin_covered(cover,p))continue;
                 clear=hc_skin_clearance(head,state,p,stats);if(clear>=-HC_SKIN_TOL)continue;
                 baseClear=hc_skin_clearance(head,state,base,stats);if(clear>=baseClear-HC_SKIN_TOL)continue;
                 target=baseClear<HC_SKIN_EDGE_CLEARANCE?baseClear:HC_SKIN_EDGE_CLEARANCE;
@@ -311,9 +333,9 @@ static int hc_skin_edge_constraints(const HCSkinHead *head,const HCShapeState *s
  * accessible memory. A successful candidate may have unresolved finite-sample
  * constraints; caller must inspect statistics before deciding to use it.
  * Missing actual head is an unchanged success, explicitly skippedNoHead=1. */
-static int hc_skin_guard(const HCShapeState *state,const float *originalP,
+static int hc_skin_guard_cover(const HCShapeState *state,const float *originalP,
         const float *approvedQ,int nv,const uint32_t *F,int nt,const unsigned char *newMask,
-        const float *baselineProvenance,float *outQ,HCSkinGuardStats *stats)
+        const float *baselineProvenance,float *outQ,HCSkinGuardStats *stats,const HCSkinCover *cover)
 {
     static const double weights[4][3]={{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
     HCSkinHead head;HCSkinGuardStats result;float *Q=NULL;
@@ -343,6 +365,7 @@ static int hc_skin_guard(const HCShapeState *state,const float *originalP,
            !memcmp(originalP+(size_t)i*3,approvedQ+(size_t)i*3,3*sizeof(float))))continue;
         eligible[i]=1;direction[2*i]=dx/r;direction[2*i+1]=dz/r;
         seam[nseam].vertex=(uint32_t)i;memcpy(seam[nseam].bits,Q+(size_t)i*3,12);nseam++;
+        if(hc_skin_covered(cover,p))continue;    /* v7.3 update: under the hat; may still move for visible neighbors */
         clear=hc_skin_clearance(&head,state,p,&result);
         if(clear>1e98)continue;
         if(newMask[i])target[i]=r-clear+HC_SKIN_CLEARANCE;
@@ -362,7 +385,7 @@ static int hc_skin_guard(const HCShapeState *state,const float *originalP,
         face=faces+nface++;face->face=(uint32_t)i;
         for(j=0;j<4;j++) {
             double p[3],base[3],clear;
-            hc_skin_sample(Q,f,j,p);if(!hc_skin_front(state,p))continue;
+            hc_skin_sample(Q,f,j,p);if(!hc_skin_front(state,p) || hc_skin_covered(cover,p))continue;
             face->front[j]=1;result.faceSamples++;hc_skin_sample(baselineProvenance,f,j,base);
             face->baseline[j]=hc_skin_clearance(&head,state,base,&result);
             clear=hc_skin_clearance(&head,state,p,&result);
@@ -400,7 +423,7 @@ static int hc_skin_guard(const HCShapeState *state,const float *originalP,
             }
         }
         if(!hc_skin_edge_constraints(&head,state,Q,approvedQ,baselineProvenance,faces,nface,F,
-              eligible,direction,move,&result,&edgeViolations,&edgeMaximum))goto done;
+              eligible,direction,move,&result,&edgeViolations,&edgeMaximum,cover))goto done;
         if(iteration==0) {
             result.beforeEdges=edgeViolations;result.before+=edgeViolations;
             if(edgeMaximum>result.maxBefore)result.maxBefore=edgeMaximum;
@@ -439,7 +462,7 @@ static int hc_skin_guard(const HCShapeState *state,const float *originalP,
     {
         double edgeMaximum;
         if(!hc_skin_edge_constraints(&head,state,Q,approvedQ,baselineProvenance,faces,nface,F,
-              eligible,direction,NULL,&result,&result.afterEdges,&edgeMaximum))goto done;
+              eligible,direction,NULL,&result,&result.afterEdges,&edgeMaximum,cover))goto done;
         if(edgeMaximum>result.maxAfter)result.maxAfter=edgeMaximum;
     }
     result.after=result.unresolved=result.afterVertices+result.afterFaces+result.afterEdges;
@@ -453,5 +476,13 @@ static int hc_skin_guard(const HCShapeState *state,const float *originalP,
 done:
     hc_skin_head_free(&head);free(Q);free(eligible);free(used);free(direction);free(radius);free(initial);free(target);free(move);free(seam);free(faces);
     return ok;
+}
+
+/* The approved guard: every front point is checked (no hat cover). */
+static int hc_skin_guard(const HCShapeState *state,const float *originalP,
+        const float *approvedQ,int nv,const uint32_t *F,int nt,const unsigned char *newMask,
+        const float *baselineProvenance,float *outQ,HCSkinGuardStats *stats)
+{
+    return hc_skin_guard_cover(state,originalP,approvedQ,nv,F,nt,newMask,baselineProvenance,outQ,stats,NULL);
 }
 #endif

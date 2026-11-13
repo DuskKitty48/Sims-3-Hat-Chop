@@ -260,7 +260,7 @@ static int chop_hidden_indices(Ctx *c,void *self,void *info)
     uint32_t db,de,di,draw,pb,pe,part,nv,ni,stride,ib,vb,base=0,nf=0,i;
     uint32_t *F=NULL,*sourceF=NULL,*outputF=NULL,*destination=NULL,*cursor=NULL;
     unsigned char *stageVB=NULL;uint16_t *stageIB=NULL;HCProfileFace *faces=NULL;
-    HCProfilePart parts[256];int nparts=0,doubled,result=-1,hairs=0,generated=0,moved=0,fixedCuts=0,cacheHits=0,skinKept=0;
+    HCProfilePart parts[256];int nparts=0,doubled,result=-1,hairs=0,generated=0,moved=0,fixedCuts=0,cacheHits=0,skinKept=0,frontKept=0;
     DWORD started=GetTickCount();
     const char *why="drawable validation";
     size_t vbbytes;
@@ -357,6 +357,11 @@ static int chop_hidden_indices(Ctx *c,void *self,void *info)
             const unsigned char *partVB=(const unsigned char *)(vb+(size_t)entry->base*stride);
             uint64_t key=hc_cache_key(&c->shape,c->shapeGeomHash,partVB,entry->count,(int)stride,F,entry->nt,entry->layout);
             const HCCacheEntry *hit=hc_cache_find(&c->cache,key,entry->count,entry->nt,(int)stride);
+            if(hit && hit->failed) {                    /* v7.3: same input failed before: no recalculation */
+                static char again[200];
+                snprintf(again,sizeof(again),"%s (same hair, hat and head as before; not recalculated)",hit->why);
+                why=again;goto done;
+            }
             if(hit) {
                 memcpy(stageVB+(size_t)entry->base*stride,hit->vb,(size_t)entry->count*stride);
                 memcpy(outputF+(size_t)entry->first*3,hit->F,(size_t)entry->nt*3*sizeof(uint32_t));
@@ -364,7 +369,10 @@ static int chop_hidden_indices(Ctx *c,void *self,void *info)
             } else {
                 if(!hc_profile_apply(&c->shape,partVB,entry->count,(int)stride,F,entry->nt,entry->layout,
                       stageVB+(size_t)entry->base*stride,outputF+(size_t)entry->first*3,&stats)) {
-                    why=hc_apply_fail?hc_apply_fail:"hair cut";goto done;
+                    why=hc_apply_fail?hc_apply_fail:"hair cut";
+                    if(strcmp(why,"memory"))            /* out of memory may pass next time */
+                        hc_cache_store_fail(&c->cache,key,entry->count,entry->nt,(int)stride,why);
+                    goto done;
                 }
                 hc_cache_store(&c->cache,key,stageVB+(size_t)entry->base*stride,entry->count,(int)stride,
                                outputF+(size_t)entry->first*3,entry->nt,&stats);
@@ -378,6 +386,7 @@ static int chop_hidden_indices(Ctx *c,void *self,void *info)
         }
 #endif
         fixedCuts+=stats.fixedCut;skinKept+=stats.skinTolerated;
+        if(stats.frontKept>frontKept)frontKept=stats.frontKept;
         for(j=0;j<(uint32_t)entry->nt*3;j++) {
             uint32_t *value=outputF+(size_t)entry->first*3+j;
             if(*value>=(uint32_t)entry->count)goto done;
@@ -408,9 +417,13 @@ done:
     if(result<0) {
         if(c)c->chopFailed=1;
         if(g_logParts || g_builds<=60)hc_log("two-type chop skipped: %s",why);
-    } else if(result>0 && (g_logParts || g_builds<=60)) hc_log("two-type chop: %d hair part(s), %d vertices moved, %d exact edge vertices%s%s%s, %lu ms",
+    } else if(result>0 && (g_logParts || g_builds<=60)) hc_log("two-type chop: %d hair part(s), %d vertices moved, %d exact edge vertices%s%s%s%s, %lu ms",
         hairs,moved,generated,fixedCuts?" (fallback cut on a hair with few spare vertices)":"",
         skinKept?" (kept a small front skin overlap, at most 3 mm)":"",
+        frontKept==1?" (reshaped hair touches the head only under the hat, where it is hidden)":
+        frontKept==2?" (hair below the hat edge kept as made: reshaped it would go into the face)":
+        frontKept==3?" (front hair kept as made: reshaped it would go into the face)":
+        frontKept==4?" (hair cut only, not reshaped: reshaped it would go into the face)":"",
         cacheHits?" (reused from an identical earlier build)":"",(unsigned long)(GetTickCount()-started));
     return result;
 }

@@ -23,6 +23,9 @@ typedef struct {
     uint32_t *F;                  /* nt*3 part-relative output indices */
     HCProfileApplyStats stats;
     uint32_t age;
+    size_t need;                  /* bytes held by vb + F */
+    int failed;                   /* v7.3: this exact input could not be chopped; why[] says why */
+    char why[128];
 } HCCacheEntry;
 
 typedef struct {
@@ -92,7 +95,7 @@ static const HCCacheEntry *hc_cache_find(HCProfileCache *c, uint64_t key, int co
 static void hc_cache_drop(HCProfileCache *c, HCCacheEntry *e)
 {
     if (!e->used) return;
-    c->bytes -= (size_t)e->count * e->stride + (size_t)e->nt * 3 * sizeof(uint32_t);
+    c->bytes -= e->need;
     free(e->vb); free(e->F);
     memset(e, 0, sizeof(*e));
 }
@@ -121,6 +124,28 @@ static void hc_cache_store(HCProfileCache *c, uint64_t key, const unsigned char 
     memcpy(slot->F, F, (size_t)nt * 3 * sizeof(uint32_t));
     slot->key = key; slot->count = count; slot->nt = nt; slot->stride = stride;
     slot->stats = *stats; slot->age = ++c->clock; slot->used = 1;
+    slot->need = need; slot->failed = 0; slot->why[0] = 0;
     c->bytes += need;
+}
+
+/* v7.3: remember that this exact input failed, so the game's repeated rebuilds of
+ * the same Sim do not recalculate a chop that cannot work (that was the lag: about
+ * 1 s per rebuild in CAS). Holds no buffers. */
+static void hc_cache_store_fail(HCProfileCache *c, uint64_t key, int count, int nt, int stride, const char *why)
+{
+    HCCacheEntry *slot = NULL;
+    int i;
+    for (i = 0; i < HC_CACHE_SLOTS; i++) if (!c->e[i].used) { slot = c->e + i; break; }
+    if (!slot) {
+        for (i = 0; i < HC_CACHE_SLOTS; i++)
+            if (c->e[i].used && (!slot || c->e[i].age < slot->age)) slot = c->e + i;
+        if (!slot) return;
+        hc_cache_drop(c, slot);
+    }
+    slot->key = key; slot->count = count; slot->nt = nt; slot->stride = stride;
+    slot->vb = NULL; slot->F = NULL; slot->need = 0;
+    memset(&slot->stats, 0, sizeof(slot->stats));
+    slot->age = ++c->clock; slot->used = 1; slot->failed = 1;
+    snprintf(slot->why, sizeof(slot->why), "%s", why ? why : "hair cut");
 }
 #endif

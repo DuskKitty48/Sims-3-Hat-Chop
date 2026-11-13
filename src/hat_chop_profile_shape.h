@@ -27,6 +27,10 @@ typedef struct {
     /* v7 hat fit: per-cut lift that hides the cut inside the hat edge */
     int rayCut, rimSectors;
     double lift[2], rimWorst[2], rimMean[2];
+    /* v7.3 update: the hat's lowest edge per 10-degree slice (HUGE_VAL = not measured),
+     * slices about x = 0, z = rimZ; rimOk when enough slices were measured */
+    double rimY[36], rimZ;
+    int rimOk;
     /* v7 speed-up: height buckets for head, hat and reference ray queries
      * (empty = old all-triangle loop; results are the same either way) */
     HCRayIndex headIdx, hatIdx, refIdx[2], refHeadIdx;
@@ -128,6 +132,9 @@ static int hc_shape_rim_pick(HCShapeState *st,const double *tri,int ntri,int ray
     double rim[HC_FIT_SECTORS][3],score[2];int c;
     st->rayCut=rayCut;st->lift[0]=st->lift[1]=0;
     st->rimSectors=hc_fit_rim(tri,ntri,rim,&st->age);
+    for(c=0;c<HC_FIT_SECTORS;c++)st->rimY[c]=rim[c][1];
+    st->rimZ=hc_age_z(&st->age,HC_FIT_HEAD_Z);
+    st->rimOk=st->rimSectors>=HC_FIT_MIN_SECTORS;
     if(st->rimSectors<HC_FIT_MIN_SECTORS)return rayCut;
     for(c=0;c<2;c++) {
         st->cut=c;st->lift[c]=0;hc_shape_update_plane(st);
