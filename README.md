@@ -30,7 +30,9 @@ Adults, teens, elders, children and toddlers. Children and toddlers are found by
 
 ## Requirements
 
-- The Sims 3, EA App version: `TS3.exe` 1.69, PE timestamp `6707155C`. On any other executable the plugin logs `OFF` and does nothing.
+- The Sims 3
+- **EA App version:** `TS3.exe` 1.69 (PE timestamp `6707155C`). This `HatChop.asi` runs only on that executable; on any other it logs `OFF` and does nothing.
+- **Steam version:** `TS3W.exe` 1.67. Use the Steam build of Hat Chop; the EA App build turns itself off on Steam.
 - A 32-bit ASI loader, for example [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader). It can also start as a MonoPatcher plugin.
 
 ## Install
@@ -104,5 +106,9 @@ Output: `bin/HatChop.asi`. The plugin uses strict SSE2 math (`-msse2 -mfpmath=ss
 
 - The two-cut method follows mauvemorn's Sims 4 Studio tutorial [How to make hat chops for TS4 hair](https://sims4studio.com/thread/26873/make-hat-chops-ts4-hair).
 - [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) by ThirteenAG.
+
+## Special Thanks
+
+- sinay for Steam port.
 
 The Sims is a trademark of Electronic Arts. This project is not made or endorsed by EA.
