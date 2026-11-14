@@ -1,4 +1,4 @@
-/* Hat Chop v4: 32-bit ASI for the EA App TS3.exe (PE 6707155C).
+/* Hat Chop 7.3: 32-bit ASI, Steam-style TS3W.exe 1.67 port (PE 52DEC247).
  * Automatically lowers existing SimHair vertices beneath worn accessory hats
  * weighted to b__Hat_grip__. Source packages are never edited.
  * Shared gravity math is also exercised by the offline executable.
@@ -21,12 +21,12 @@
 #define HC_VERSION 4
 #endif
 
-/* ------------------------------------------------------------------ the game (EA App TS3.exe, PE 0x6707155C) */
-#define SITE_FILL        0x005DD0E7u
-#define TARGET_FILL      0x005D4700u
-#define SITE_WRITE       0x005D4820u
-#define TARGET_WRITE     0x005D2210u
-#define GEOM_VTBL        0x0102E830u   /* CAS/GeometryResource (its constructors write this, 0x005C7FDB, 0x005C8135) */
+/* the game (Steam-style TS3W.exe 1.67, PE 0x52DEC247) */
+#define SITE_FILL        0x005DC197u
+#define TARGET_FILL      0x005D3760u
+#define SITE_WRITE      0x005D3880u
+#define TARGET_WRITE    0x005D1010u
+#define GEOM_VTBL        0x00FE32C0u   /* CAS/GeometryResource vtable, ctor at 0x005C6E90 */
 
 #define MB_DRAW_BEGIN    0x134         /* ModelBuilder: drawables, 0xD0 each */
 #define MB_DRAW_END      0x138
@@ -758,7 +758,7 @@ static void read_ini(void)
 static int calls_ready(void)
 {
     const uint8_t *f = (const uint8_t *)SITE_FILL, *w = (const uint8_t *)SITE_WRITE;
-    return readable((void *)GEOM_VTBL, 0x64) && U32((void *)GEOM_VTBL, 0x60) == 0x005C8040u &&
+    return readable((void *)GEOM_VTBL, 0x64) && U32((void *)GEOM_VTBL, 0x60) == 0x005C6F20u &&
         readable(f, 5) && readable(w, 5) && f[0] == 0xE8 && w[0] == 0xE8 &&
         SITE_FILL + 5 + *(const int32_t *)(f+1) == TARGET_FILL &&
         SITE_WRITE + 5 + *(const int32_t *)(w+1) == TARGET_WRITE;
@@ -824,9 +824,9 @@ static void start_plugin(void)
     hc_log("Hat Chop %d ASI starting: base %p timestamp %08lX Enabled=%d Clearance=%.6f GridStep=%.6f",
            HC_VERSION, exe, (unsigned long)nt->FileHeader.TimeDateStamp, g_enabled, g_downClear, g_gridStep);
 #endif
-    if ((uintptr_t)exe != 0x400000 || nt->FileHeader.TimeDateStamp != 0x6707155C ||
+    if ((uintptr_t)exe != 0x400000 || nt->FileHeader.TimeDateStamp != 0x52DEC247 ||
         nt->FileHeader.Machine != IMAGE_FILE_MACHINE_I386) {
-        hc_log("OFF: needs EA App TS3.exe 1.69 (base 00400000, timestamp 6707155C)"); return;
+        hc_log("OFF: needs TS3W.exe 1.67 Steam-style (base 00400000, timestamp 52DEC247)"); return;
     }
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
                            (LPCWSTR)(uintptr_t)&start_plugin, &pinned)) {
