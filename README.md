@@ -109,6 +109,6 @@ Output: `bin/HatChop.asi`. The plugin uses strict SSE2 math (`-msse2 -mfpmath=ss
 
 ## Special Thanks
 
-- sinay for Steam port.
+- **sinay** for Steam port.
 
 The Sims is a trademark of Electronic Arts. This project is not made or endorsed by EA.
